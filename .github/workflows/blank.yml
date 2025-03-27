@@ -1,0 +1,50 @@
+name: Build Linux Based Router Distro LTS
+
+# on:
+#   release:
+#     types: [published]
+#   push:
+#     branches:
+#       - master
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set env variables
+        run: echo ::set-env name=RELEASE_VERSION::${GITHUB_REF:10}
+        env:
+          ACTIONS_ALLOW_UNSECURE_COMMANDS: "true"
+
+      - name: Build "vyos-build" Docker image
+        run: |
+          git clone -b sagitta --single-branch https://github.com/vyos/vyos-build.git
+      - name: Build VyOS ISO AMD64
+        run: |
+          docker run --rm --privileged \
+            -v $(pwd)/vyos-build:/vyos -w /vyos vyos/vyos-build:sagitta bash \
+            -c './configure --architecture amd64 \
+            --build-type release --version ${{ env.RELEASE_VERSION }} \
+            --build-by "me@eliseomartelli.it" && sudo make iso'
+      - name: Rename VyOS ISO
+        run: |
+          mv vyos-build/build/live-image-amd64.hybrid.iso \
+          vyos-build/build/linux-based-router-distro-${{ env.RELEASE_VERSION }}-amd64.iso
+          ls vyos-build/build -lh
+      - name: Upload VyOS ISO to GitHub artifacts
+        uses: actions/upload-artifact@v1
+        with:
+          name: vyos-lts
+          path: "vyos-build/build/linux-based-router-distro-${{ env.RELEASE_VERSION }}-amd64.iso"
+
+      - name: Upload VyOS artifacts to release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: vyos-build/build/linux-based-router-distro-${{ env.RELEASE_VERSION }}-amd64.iso
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
